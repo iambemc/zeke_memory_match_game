@@ -1,4 +1,4 @@
-Zeke's Memory Match Game
+#Zeke's Memory Match Game
 Welcome to Zeke's Memory Match Game! This is a fun, interactive, and fully customized memory matching game with a Toy Story theme, originally created to celebrate a special 2nd birthday. It features a real-time, online leaderboard so friends and family can compete from anywhere!
 
 This project is built as a single HTML file, making it incredibly easy to deploy and share.
