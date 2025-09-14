@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zeke's Memory Match Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Bangers', cursive;
+            background-color: #72b1f0;
+            background-image: 
+                radial-gradient(white 15%, transparent 16%),
+                radial-gradient(white 15%, transparent 16%);
+            background-size: 60px 60px;
+            background-position: 0 0, 30px 30px;
+            touch-action: manipulation;
+        }
+        .perspective { perspective: 1000px; }
+        .card {
+            transform-style: preserve-3d;
+            transition: transform 0.6s, box-shadow 0.3s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2), 0 6px 20px rgba(0,0,0,0.19);
+        }
+        .card:hover { box-shadow: 0 8px 16px rgba(0,0,0,0.3), 0 12px 40px rgba(0,0,0,0.25); }
+        .card.is-flipped { transform: rotateY(180deg); }
+        .card-face {
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .card-face.card-back { transform: rotateY(180deg); }
+        .control-button.active {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 3px solid white;
+        }
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 20px;
+            opacity: 0.9;
+            animation: confetti-fall 4s ease-out forwards;
+        }
+        .star {
+            background-color: gold;
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        }
+        @keyframes confetti-fall {
+            0% { transform: translateY(-100vh) rotate(0deg); }
+            100% { transform: translateY(100vh) rotate(720deg); }
+        }
+        @keyframes match-animation {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+        .matched .card-back { animation: match-animation 0.5s ease-in-out; }
+        @keyframes wrong-animation {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .wrong { animation: wrong-animation 0.3s linear; }
+        #high-scores-container ol { list-style-position: inside; }
+        #high-scores-container li { font-weight: bold; color: #1e3a8a; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-2 sm:p-4">
+    <main class="bg-yellow-100/80 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 lg:p-8 w-full max-w-7xl border-4 border-white">
+        <!-- Game Header -->
+        <header class="text-center mb-4">
+            <h1 class="text-5xl sm:text-6xl font-bold text-blue-800 tracking-wider" style="text-shadow: 2px 2px #FFF, 4px 4px #e11d48;">Zeke's Memory Match Game</h1>
+        </header>
+
+        <!-- Game Info & Controls -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+            <!-- Left Column: Controls -->
+            <div class="lg:col-span-1 space-y-4">
+                <div class="flex flex-col justify-center items-center bg-blue-200/50 p-3 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-bold text-blue-700 tracking-wide mb-2">Level:</h3>
+                    <div class="flex space-x-2">
+                        <button id="level-easy" class="control-button bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all text-lg">Easy</button>
+                        <button id="level-medium" class="control-button bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all text-lg">Medium</button>
+                        <button id="level-hard" class="control-button bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all text-lg">Hard</button>
+                    </div>
+                </div>
+                <div class="flex flex-col justify-center items-center bg-blue-200/50 p-3 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-bold text-blue-700 tracking-wide mb-2">Card Back:</h3>
+                    <div class="flex space-x-2">
+                        <button id="back-spaceship" class="control-button bg-slate-700 hover:bg-slate-800 p-2 rounded-lg shadow-md transition-all w-14 h-14"></button>
+                        <button id="back-badge" class="control-button bg-blue-500 hover:bg-blue-600 p-2 rounded-lg shadow-md transition-all w-14 h-14"></button>
+                        <button id="back-ball" class="control-button bg-yellow-400 hover:bg-yellow-500 p-2 rounded-lg shadow-md transition-all w-14 h-14"></button>
+                    </div>
+                </div>
+                <div class="flex justify-around items-center bg-blue-300/70 rounded-lg p-3 shadow-inner">
+                    <div class="text-center"><span class="font-bold text-blue-800 text-2xl">Time</span><p id="timer" class="text-3xl font-bold text-blue-900">0:00</p></div>
+                    <div class="text-center"><span class="font-bold text-blue-800 text-2xl">Moves</span><p id="moves" class="text-3xl font-bold text-blue-900">0</p></div>
+                </div>
+                 <button id="restart-button" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 text-3xl">Restart</button>
+            </div>
+
+            <!-- Middle Column: Game Board -->
+            <div class="lg:col-span-2">
+                 <section id="game-board" class="w-full"></section>
+            </div>
+        </div>
+        
+        <!-- High Scores Section -->
+        <div id="high-scores-container" class="bg-white/60 rounded-lg p-4 shadow-md mt-6">
+            <h3 class="text-center text-3xl text-blue-800 font-bold mb-3">Leaderboards</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                <div>
+                    <h4 class="text-2xl text-orange-600">Easy</h4>
+                    <ol id="hs-list-easy" class="text-lg space-y-1 mt-2"></ol>
+                </div>
+                <div>
+                    <h4 class="text-2xl text-orange-600">Medium</h4>
+                    <ol id="hs-list-medium" class="text-lg space-y-1 mt-2"></ol>
+                </div>
+                <div>
+                    <h4 class="text-2xl text-orange-600">Hard</h4>
+                    <ol id="hs-list-hard" class="text-lg space-y-1 mt-2"></ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- Win Modal -->
+        <div id="win-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden z-50 p-4">
+            <div class="bg-yellow-100 rounded-2xl shadow-xl p-6 sm:p-8 text-center transform scale-95 transition-transform max-w-sm w-full">
+                <h2 id="win-title" class="text-5xl font-bold text-blue-800 mb-2">You Won!</h2>
+                <p class="text-gray-700 text-xl mb-4" id="win-stats">Great job!</p>
+                <div id="high-score-form" class="hidden space-y-3 my-4">
+                    <p class="text-2xl text-green-700 font-bold">You made the Top 5!</p>
+                    <input type="text" id="player-name" placeholder="Enter Your Name" maxlength="10" class="text-center w-full p-2 border-4 border-blue-400 rounded-lg text-xl font-bold focus:outline-none focus:ring-4 focus:ring-orange-400">
+                    <button id="save-score-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg shadow-md text-2xl">Save Score</button>
+                </div>
+                <button id="play-again-button" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:scale-105 text-2xl mt-4">Play Again</button>
+            </div>
+        </div>
+        <div id="confetti-container" class="absolute inset-0 w-full h-full pointer-events-none overflow-hidden z-40"></div>
+    </main>
+
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, doc, onSnapshot, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const gameBoard = document.getElementById('game-board');
+            const movesElement = document.getElementById('moves');
+            const timerElement = document.getElementById('timer');
+            const restartButton = document.getElementById('restart-button');
+            const playAgainButton = document.getElementById('play-again-button');
+            const winModal = document.getElementById('win-modal');
+            const winTitle = document.getElementById('win-title');
+            const winStats = document.getElementById('win-stats');
+            const confettiContainer = document.getElementById('confetti-container');
+            const highScoreForm = document.getElementById('high-score-form');
+            const playerNameInput = document.getElementById('player-name');
+            const saveScoreButton = document.getElementById('save-score-button');
+            const highScoreLists = { easy: document.getElementById('hs-list-easy'), medium: document.getElementById('hs-list-medium'), hard: document.getElementById('hs-list-hard'), };
+            const levelButtons = { easy: document.getElementById('level-easy'), medium: document.getElementById('level-medium'), hard: document.getElementById('level-hard'), };
+            const cardBackButtons = { spaceship: document.getElementById('back-spaceship'), badge: document.getElementById('back-badge'), ball: document.getElementById('back-ball'), };
+
+            const allCharacters = ['🤠', '👨‍🚀', '🦖', '🐷', '🐴', '🥔', '🐕', '👽', '👧', '🐑', '🍴', '🐻', '🏍️', '👾', '🐧', '💂', '🦄', '🦔', '🐤', '🐰', '👴', '👶', '🤡', '🏎️', '🐒'];
+            const cardBacks = {
+                spaceship: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><g transform="rotate(315 50 50)"><path d="M50 10 C 55 25 60 40 60 50 L 40 50 C 40 40 45 25 50 10Z" fill="#E6E6FA" stroke="#4B0082" stroke-width="2"/><rect x="40" y="50" width="20" height="30" fill="#E6E6FA" stroke="#4B0082" stroke-width="2"/><circle cx="50" cy="45" r="8" fill="#32CD32" stroke="#4B0082" stroke-width="2"/><path d="M40 80 L 20 95 L 30 80 Z" fill="#90EE90" stroke="#4B0082" stroke-width="2"/><path d="M60 80 L 80 95 L 70 80 Z" fill="#90EE90" stroke="#4B0082" stroke-width="2"/></g></svg>`,
+                badge: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 2 L61.8 38.2 H98 L68.2 59.4 L79.6 95 L50 72 L20.4 95 L31.8 59.4 L2 38.2 H38.2 Z" fill="#FFD700" stroke="saddlebrown" stroke-width="3"/><path d="M50 15 L58.5 42 H85 L63 58 L70 85 L50 68 L30 85 L37 58 L15 42 H41.5 Z" fill="none" stroke="saddlebrown" stroke-width="4"/><text x="50" y="60" font-family="Bangers" font-size="24" fill="saddlebrown" text-anchor="middle">SHERIFF</text></svg>`,
+                ball: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="48" fill="#FFD900" stroke="#333" stroke-width="2"/><rect x="0" y="42" width="100" height="16" fill="#4A90E2"/><path d="M50 28 L57.5 48 L78 48 L61 60 L68 80 L50 68 L32 80 L39 60 L22 48 L42.5 48 Z" fill="#E40D23"/></svg>`
+            };
+            const levels = {
+                easy: { pairs: 6, gridClass: 'grid grid-cols-4 gap-2 sm:gap-4' },
+                medium: { pairs: 8, gridClass: 'grid grid-cols-4 gap-2 sm:gap-4' },
+                hard: { pairs: 12, gridClass: 'grid grid-cols-6 gap-2 sm:gap-3' }
+            };
+
+            let currentLevel = 'easy', currentCardBack = 'spaceship', cards = [], firstCard = null, secondCard = null, lockBoard = false, moves = 0, matches = 0, timer, time = 0, gameStarted = false, soundsReady = false;
+            
+            // --- Firebase Setup ---
+            const firebaseConfig = {
+                apiKey: "AIzaSyC99-ckDoq6QZBD...", // This is a placeholder, your real key is here
+                authDomain: "zekesgameparty.firebaseapp.com",
+                projectId: "zekesgameparty",
+                storageBucket: "zekesgameparty.appspot.com",
+                messagingSenderId: "655118740002",
+                appId: "1:655118740002:web:7e4e08c205c1455e13787b"
+            };
+
+            const app = initializeApp(firebaseConfig);
+            const db = getFirestore(app);
+            const leaderboardRef = doc(db, "scores", "leaderboard");
+
+            // --- Sound Effects Setup ---
+            const sounds = {
+                flip: () => new Tone.Synth().toDestination().triggerAttackRelease("C5", "8n"),
+                match: () => new Tone.Synth().toDestination().triggerAttackRelease("E5", "8n"),
+                wrong: () => new Tone.Synth().toDestination().triggerAttackRelease("C4", "8n"),
+                win: () => {
+                    const synth = new Tone.Synth().toDestination();
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("C5", "8n", now);
+                    synth.triggerAttackRelease("E5", "8n", now + 0.2);
+                    synth.triggerAttackRelease("G5", "8n", now + 0.4);
+                }
+            };
+            
+            // --- High Score Logic (Firebase Version) ---
+            async function getHighScores() {
+                const docSnap = await getDoc(leaderboardRef);
+                return docSnap.exists() ? docSnap.data() : { easy: [], medium: [], hard: [] };
+            }
+
+            async function isNewHighScore(level, newTime) {
+                const scores = await getHighScores();
+                const levelScores = scores[level] || [];
+                return levelScores.length < 5 || newTime < levelScores[levelScores.length - 1].time;
+            }
+            
+            async function addHighScore(level, name, time) {
+                const scores = await getHighScores();
+                const levelScores = scores[level] || [];
+                levelScores.push({ name, time });
+                levelScores.sort((a, b) => a.time - b.time);
+                scores[level] = levelScores.slice(0, 5);
+                await setDoc(leaderboardRef, scores);
+            }
+
+            function formatTime(seconds) { const min = Math.floor(seconds / 60); const sec = (seconds % 60).toString().padStart(2, '0'); return `${min}:${sec}`; }
+            
+            function displayHighScores(scores) {
+                Object.keys(highScoreLists).forEach(level => {
+                    const listEl = highScoreLists[level];
+                    listEl.innerHTML = '';
+                    const levelScores = scores[level] || [];
+                    if (levelScores.length === 0) {
+                        listEl.innerHTML = '<li>No scores yet!</li>';
+                    } else {
+                        levelScores.forEach(score => {
+                            const li = document.createElement('li');
+                            li.textContent = `${score.name} - ${formatTime(score.time)}`;
+                            listEl.appendChild(li);
+                        });
+                    }
+                });
+            }
+
+            // --- Game Board Creation ---
+            function createBoard() {
+                const config = levels[currentLevel];
+                gameBoard.className = config.gridClass;
+                const shuffledChars = [...allCharacters].sort(() => 0.5 - Math.random());
+                const selectedCharacters = shuffledChars.slice(0, config.pairs);
+                const cardCharacters = [...selectedCharacters, ...selectedCharacters].sort(() => 0.5 - Math.random());
+                gameBoard.innerHTML = '';
+                cards = [];
+                cardCharacters.forEach(char => {
+                    const cardElement = document.createElement('div');
+                    cardElement.classList.add('perspective', 'h-24', 'sm:h-28', 'cursor-pointer');
+                    cardElement.innerHTML = `<div class="card relative w-full h-full" data-character="${char}"><div class="card-face card-front absolute w-full h-full bg-blue-600 rounded-lg p-2">${cardBacks[currentCardBack]}</div><div class="card-face card-back absolute w-full h-full bg-yellow-300 rounded-lg text-5xl sm:text-6xl">${char}</div></div>`;
+                    gameBoard.appendChild(cardElement);
+                    cards.push(cardElement.querySelector('.card'));
+                });
+            }
+            
+            function populateControlButtons() { Object.keys(cardBackButtons).forEach(back => { cardBackButtons[back].innerHTML = cardBacks[back]; }); }
+
+            // --- Core Game Logic ---
+            function flipCard() {
+                if (!soundsReady) { Tone.start(); soundsReady = true; }
+                if (!gameStarted) { startGameTimer(); gameStarted = true; }
+                if (lockBoard || this === firstCard) return;
+                
+                sounds.flip();
+                this.classList.add('is-flipped');
+                
+                if (!firstCard) { firstCard = this; return; }
+                secondCard = this;
+                incrementMoves();
+                checkForMatch();
+            }
+
+            function checkForMatch() {
+                const isMatch = firstCard.dataset.character === secondCard.dataset.character;
+                isMatch ? disableCards() : unflipCards();
+            }
+
+            function disableCards() {
+                sounds.match();
+                firstCard.classList.add('matched');
+                secondCard.classList.add('matched');
+                firstCard.removeEventListener('click', flipCard);
+                secondCard.removeEventListener('click', flipCard);
+                matches++;
+                resetBoardState();
+                if (matches === levels[currentLevel].pairs) { setTimeout(winGame, 500); }
+            }
+
+            function unflipCards() {
+                lockBoard = true;
+                sounds.wrong();
+                firstCard.classList.add('wrong');
+                secondCard.classList.add('wrong');
+                setTimeout(() => {
+                    if (firstCard) { firstCard.classList.remove('is-flipped', 'wrong'); }
+                    if (secondCard) { secondCard.classList.remove('is-flipped', 'wrong'); }
+                    resetBoardState();
+                }, 1200);
+            }
+            
+            function resetBoardState() { [firstCard, secondCard, lockBoard] = [null, null, false]; }
+            function incrementMoves() { moves++; movesElement.textContent = moves; }
+            function startGameTimer() { clearInterval(timer); timer = setInterval(() => { time++; timerElement.textContent = formatTime(time); }, 1000); }
+
+            // --- Game State & Control ---
+            function setControlActiveState() {
+                Object.values(levelButtons).forEach(btn => btn.classList.remove('active'));
+                levelButtons[currentLevel].classList.add('active');
+                Object.values(cardBackButtons).forEach(btn => btn.classList.remove('active'));
+                cardBackButtons[currentCardBack].classList.add('active');
+            }
+            
+            function changeLevel(level) { currentLevel = level; startGame(); }
+            function changeCardBack(back) { currentCardBack = back; startGame(); }
+            function startGame() {
+                [moves, matches, time, gameStarted] = [0, 0, 0, false];
+                resetBoardState();
+                movesElement.textContent = '0';
+                timerElement.textContent = '0:00';
+                clearInterval(timer);
+                winModal.classList.add('hidden');
+                highScoreForm.classList.add('hidden');
+                playAgainButton.classList.remove('hidden');
+                playerNameInput.value = '';
+                confettiContainer.innerHTML = '';
+                setControlActiveState();
+                createBoard();
+                addEventListeners();
+            }
+            
+            async function winGame() {
+                clearInterval(timer);
+                sounds.win();
+                winStats.textContent = `Finished in ${formatTime(time)} with ${moves} moves!`;
+                if (await isNewHighScore(currentLevel, time)) {
+                    winTitle.textContent = "New Record!";
+                    highScoreForm.classList.remove('hidden');
+                    playAgainButton.classList.add('hidden');
+                } else {
+                    winTitle.textContent = "You Won!";
+                    highScoreForm.classList.add('hidden');
+                    playAgainButton.classList.remove('hidden');
+                }
+                winModal.classList.remove('hidden');
+                setTimeout(() => winModal.querySelector('div').style.transform = 'scale(1)', 10);
+                launchConfetti();
+            }
+
+            async function saveScore() {
+                const playerName = playerNameInput.value.trim().substring(0, 10) || "Player";
+                await addHighScore(currentLevel, playerName, time);
+                highScoreForm.classList.add('hidden');
+                playAgainButton.classList.remove('hidden');
+            }
+            
+            function addEventListeners() { cards.forEach(card => card.addEventListener('click', flipCard)); }
+
+            function launchConfetti() {
+                for (let i = 0; i < 100; i++) {
+                    const confetti = document.createElement('div');
+                    confetti.classList.add('confetti', 'star');
+                    confetti.style.left = `${Math.random() * 100}vw`;
+                    confetti.style.animationDelay = `${Math.random() * 3}s`;
+                    confetti.style.transform = `rotate(${Math.random() * 360}deg) scale(${Math.random() * 0.5 + 0.5})`;
+                    confettiContainer.appendChild(confetti);
+                }
+            }
+
+            // --- Initial Setup ---
+            onSnapshot(leaderboardRef, (docSnap) => {
+                const scores = docSnap.data() || { easy: [], medium: [], hard: [] };
+                displayHighScores(scores);
+            });
+
+            restartButton.addEventListener('click', startGame);
+            playAgainButton.addEventListener('click', startGame);
+            saveScoreButton.addEventListener('click', saveScore);
+            Object.keys(levelButtons).forEach(level => levelButtons[level].addEventListener('click', () => changeLevel(level)));
+            Object.keys(cardBackButtons).forEach(back => cardBackButtons[back].addEventListener('click', () => changeCardBack(back)));
+            
+            populateControlButtons();
+            startGame();
+        });
+    </script>
+</body>
+</html>
+
